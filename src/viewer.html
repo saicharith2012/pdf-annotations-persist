@@ -44,17 +44,32 @@
   <div class="sep"></div>
 
   <div class="group" id="tools" role="radiogroup" aria-label="Annotation tools">
-    <button class="icon tool active" data-mode="0" title="Select (Esc)" aria-label="Select">
+    <button class="icon tool active" data-tool="select" title="Select (Esc)" aria-label="Select">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 2l9 5.5-4 1-1.7 3.9z"/></svg>
     </button>
-    <button class="icon tool" data-mode="9" title="Highlight (H)" aria-label="Highlight">
+    <button class="icon tool" data-tool="highlight" title="Highlight (H)" aria-label="Highlight">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 9.5 9.5 4l2.5 2.5L6.5 12H4z"/><path d="M2 14.5h12"/></svg>
     </button>
-    <button class="icon tool" data-mode="15" title="Draw (D)" aria-label="Draw">
+    <button class="icon tool" data-tool="draw" title="Draw (D)" aria-label="Draw">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 14c1-4 3-6 5.5-6M12.5 2.5 14 4 7 11l-2 .5.5-2z"/></svg>
     </button>
-    <button class="icon tool" data-mode="3" title="Text box (T)" aria-label="Text box">
+    <button class="icon tool" data-tool="rect" title="Rectangle (R)" aria-label="Rectangle">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8" rx="1"/></svg>
+    </button>
+    <button class="icon tool" data-tool="ellipse" title="Ellipse (O)" aria-label="Ellipse">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="8" rx="5.5" ry="4"/></svg>
+    </button>
+    <button class="icon tool" data-tool="line" title="Line (L)" aria-label="Line">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13L13 3"/></svg>
+    </button>
+    <button class="icon tool" data-tool="arrow" title="Arrow (A)" aria-label="Arrow">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13L13 3M13 3H8.5M13 3v4.5"/></svg>
+    </button>
+    <button class="icon tool" data-tool="text" title="Text box (T)" aria-label="Text box">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4V3h10v1M8 3v10M6 13h4"/></svg>
+    </button>
+    <button class="icon tool" data-tool="erase" title="Eraser (E) — click a mark to remove it" aria-label="Eraser">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 13H3.8l-1.3-1.3a1 1 0 0 1 0-1.4l7-7a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4L7 13z"/><path d="M6 6.5 10.5 11M13.5 13H7"/></svg>
     </button>
   </div>
 
@@ -113,6 +128,8 @@
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>
   </button>
 </div>
+
+<div id="shapeOverlay" hidden><svg id="shapePreview" aria-hidden="true"></svg></div>
 
 <div id="viewerContainer" tabindex="0">
   <div id="viewer" class="pdfViewer"></div>

@@ -51,6 +51,30 @@ const INK_COLORS = ["#E03131", "#1971C2", "#2F9E44", "#F08C00", "#1E1E1E"];
 
 const $ = (id) => document.getElementById(id);
 
+// Shapes are drawn as PDF.js ink editors: a rectangle is just a closed
+// polyline. That keeps them genuine /Ink annotations, so they persist, undo,
+// re-colour and export exactly like freehand strokes with no extra machinery.
+const TOOLS = {
+  select:    { mode: AnnotationEditorType.NONE },
+  highlight: { mode: AnnotationEditorType.HIGHLIGHT },
+  draw:      { mode: AnnotationEditorType.INK },
+  text:      { mode: AnnotationEditorType.FREETEXT },
+  rect:      { mode: AnnotationEditorType.INK, shape: "rect" },
+  ellipse:   { mode: AnnotationEditorType.INK, shape: "ellipse" },
+  line:      { mode: AnnotationEditorType.INK, shape: "line" },
+  arrow:     { mode: AnnotationEditorType.INK, shape: "arrow" },
+  // The eraser keeps ink mode on so existing ink annotations are live editors
+  // and can be removed directly.
+  erase:     { mode: AnnotationEditorType.INK, erase: true },
+};
+
+const MODE_TO_TOOL = new Map([
+  [AnnotationEditorType.NONE, "select"],
+  [AnnotationEditorType.HIGHLIGHT, "highlight"],
+  [AnnotationEditorType.INK, "draw"],
+  [AnnotationEditorType.FREETEXT, "text"],
+]);
+
 const state = {
   file: null,
   docId: null,
@@ -59,6 +83,7 @@ const state = {
   pdfViewer: null,
   uiManager: null,
   diskHandle: null,
+  tool: "select",
   mode: AnnotationEditorType.NONE,
   dirty: false,
   saving: false,
@@ -303,6 +328,115 @@ async function save({ force = false, promptForPermission = false } = {}) {
   }
 }
 
+// --- shape geometry --------------------------------------------------------
+// All points are in PDF user space (origin bottom-left), which is what
+// InkDrawOutline.deserialize expects, and they must be typed arrays.
+
+const ARROW_HEAD_MIN = 9;
+
+function constrain(kind, x0, y0, x1, y1) {
+  // Shift gives squares, circles, and 45-degree lines.
+  if (kind === "line" || kind === "arrow") {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const angle = (Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * Math.PI) / 4;
+    const len = Math.hypot(dx, dy);
+    return [x0, y0, x0 + Math.cos(angle) * len, y0 + Math.sin(angle) * len];
+  }
+  const side = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+  return [x0, y0, x0 + Math.sign(x1 - x0 || 1) * side, y0 + Math.sign(y1 - y0 || 1) * side];
+}
+
+// PDF.js smooths any ink path of more than two points into Bezier curves, which
+// rounds off corners. Straight edges must therefore be emitted as separate
+// two-point paths; only the ellipse wants the smoothing.
+const seg = (ax, ay, bx, by) => new Float32Array([ax, ay, bx, by]);
+
+function shapePaths(kind, x0, y0, x1, y1, thickness) {
+  switch (kind) {
+    case "rect":
+      return [
+        seg(x0, y0, x1, y0),
+        seg(x1, y0, x1, y1),
+        seg(x1, y1, x0, y1),
+        seg(x0, y1, x0, y0),
+      ];
+    case "ellipse": {
+      const cx = (x0 + x1) / 2;
+      const cy = (y0 + y1) / 2;
+      const rx = Math.abs(x1 - x0) / 2;
+      const ry = Math.abs(y1 - y0) / 2;
+      const steps = 64;
+      const pts = new Float32Array((steps + 1) * 2);
+      for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * 2 * Math.PI;
+        pts[i * 2] = cx + rx * Math.cos(a);
+        pts[i * 2 + 1] = cy + ry * Math.sin(a);
+      }
+      return [pts];
+    }
+    case "line":
+      return [seg(x0, y0, x1, y1)];
+    case "arrow": {
+      const angle = Math.atan2(y1 - y0, x1 - x0);
+      const head = Math.max(ARROW_HEAD_MIN, thickness * 3.5);
+      const spread = Math.PI / 7;
+      // Shaft plus two head strokes, each straight.
+      return [
+        seg(x0, y0, x1, y1),
+        seg(x1 - head * Math.cos(angle - spread), y1 - head * Math.sin(angle - spread), x1, y1),
+        seg(x1 - head * Math.cos(angle + spread), y1 - head * Math.sin(angle + spread), x1, y1),
+      ];
+    }
+    default:
+      return [];
+  }
+}
+
+function boundsOf(paths) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of paths) {
+    for (let i = 0; i < p.length; i += 2) {
+      if (p[i] < minX) minX = p[i];
+      if (p[i] > maxX) maxX = p[i];
+      if (p[i + 1] < minY) minY = p[i + 1];
+      if (p[i + 1] > maxY) maxY = p[i + 1];
+    }
+  }
+  return [minX, minY, maxX, maxY];
+}
+
+const hexToRgb = (hex) => [
+  parseInt(hex.slice(1, 3), 16),
+  parseInt(hex.slice(3, 5), 16),
+  parseInt(hex.slice(5, 7), 16),
+];
+
+/** Build a real ink annotation from computed geometry and register an undo. */
+async function addShape(pageIndex, paths, colorHex, thickness) {
+  const pageView = state.pdfViewer.getPageView(pageIndex);
+  const layer = pageView?.annotationEditorLayer?.annotationEditorLayer;
+  if (!layer) return;
+
+  const editor = await layer.deserialize({
+    annotationType: AnnotationEditorType.INK,
+    color: hexToRgb(colorHex),
+    opacity: 1,
+    thickness,
+    paths: { points: paths },
+    pageIndex,
+    rect: boundsOf(paths),
+    rotation: 0,
+  });
+  if (!editor) return;
+
+  state.uiManager?.addCommands({
+    cmd: () => layer.addOrRebuild(editor),
+    undo: () => editor.remove(),
+    mustExec: true,
+  });
+}
+
 // --- toolbar ---------------------------------------------------------------
 
 function paramTypesFor(mode) {
@@ -359,18 +493,263 @@ function renderToolParams(mode) {
   slider.oninput = () => dispatchParam(spec.size, Number(slider.value));
 }
 
-function setMode(mode) {
-  if (!state.pdfViewer) return;
-  // The setter takes an options object, unlike the constructor option.
-  state.pdfViewer.annotationEditorMode = { mode };
+function setTool(name) {
+  if (!state.pdfViewer || !TOOLS[name]) return;
+  state.tool = name;
+  const { mode } = TOOLS[name];
+  if (state.mode !== mode) {
+    // The setter takes an options object, unlike the constructor option.
+    state.pdfViewer.annotationEditorMode = { mode };
+  }
+  reflectTool();
 }
 
-function reflectMode(mode) {
-  state.mode = mode;
+function reflectTool() {
   for (const b of document.querySelectorAll(".tool")) {
-    b.classList.toggle("active", Number(b.dataset.mode) === mode);
+    b.classList.toggle("active", b.dataset.tool === state.tool);
   }
-  renderToolParams(mode);
+  syncOverlay();
+  // Shapes are ink, so they share ink's colour and thickness controls.
+  renderToolParams(TOOLS[state.tool].erase ? AnnotationEditorType.NONE : TOOLS[state.tool].mode);
+}
+
+// --- drawing overlay -------------------------------------------------------
+// Shapes and the eraser need their own pointer handling, so a transparent
+// layer sits above the pages and intercepts events before PDF.js sees them.
+
+const drag = { active: false, pageIndex: -1, x0: 0, y0: 0, x1: 0, y1: 0, shift: false };
+
+function positionOverlay() {
+  const r = $("viewerContainer").getBoundingClientRect();
+  const o = $("shapeOverlay");
+  o.style.top = `${r.top}px`;
+  o.style.left = `${r.left}px`;
+  o.style.width = `${r.width}px`;
+  o.style.height = `${r.height}px`;
+}
+
+function overlayActive() {
+  const t = TOOLS[state.tool];
+  return Boolean(t?.shape || t?.erase);
+}
+
+function syncOverlay() {
+  const on = overlayActive();
+  $("shapeOverlay").hidden = !on;
+  $("shapeOverlay").classList.toggle("erasing", TOOLS[state.tool]?.erase === true);
+  if (on) positionOverlay();
+  clearPreview();
+}
+
+/** The page element under a client point, plus its index. */
+function pageAt(clientX, clientY) {
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    const pageDiv = el.closest?.(".page");
+    if (pageDiv?.dataset.pageNumber) {
+      return { pageDiv, pageIndex: Number(pageDiv.dataset.pageNumber) - 1 };
+    }
+  }
+  return null;
+}
+
+/** Client coordinates -> PDF user space for a given page. */
+function toPdfPoint(pageIndex, pageDiv, clientX, clientY) {
+  const pageView = state.pdfViewer.getPageView(pageIndex);
+  const r = pageDiv.getBoundingClientRect();
+  return pageView.viewport.convertToPdfPoint(clientX - r.left, clientY - r.top);
+}
+
+function clearPreview() {
+  $("shapePreview").replaceChildren();
+}
+
+function drawPreview() {
+  const svg = $("shapePreview");
+  svg.replaceChildren();
+  const kind = TOOLS[state.tool].shape;
+  const oRect = $("shapeOverlay").getBoundingClientRect();
+  let [x0, y0, x1, y1] = [drag.x0, drag.y0, drag.x1, drag.y1];
+  if (drag.shift) [x0, y0, x1, y1] = constrain(kind, x0, y0, x1, y1);
+
+  // Preview is drawn in overlay-local pixels; the committed shape is rebuilt
+  // in PDF space, so the two agree once the page scale is applied.
+  const ns = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs) => {
+    const el = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+    el.setAttribute("fill", "none");
+    el.setAttribute("stroke", state.colors[AnnotationEditorType.INK]);
+    el.setAttribute("stroke-width", $("thickness").value || 3);
+    el.setAttribute("stroke-linecap", "round");
+    el.setAttribute("stroke-linejoin", "round");
+    return el;
+  };
+  const [lx0, ly0, lx1, ly1] = [x0 - oRect.left, y0 - oRect.top, x1 - oRect.left, y1 - oRect.top];
+
+  if (kind === "rect") {
+    svg.append(mk("rect", { x: Math.min(lx0, lx1), y: Math.min(ly0, ly1), width: Math.abs(lx1 - lx0), height: Math.abs(ly1 - ly0) }));
+  } else if (kind === "ellipse") {
+    svg.append(mk("ellipse", { cx: (lx0 + lx1) / 2, cy: (ly0 + ly1) / 2, rx: Math.abs(lx1 - lx0) / 2, ry: Math.abs(ly1 - ly0) / 2 }));
+  } else if (kind === "line") {
+    svg.append(mk("line", { x1: lx0, y1: ly0, x2: lx1, y2: ly1 }));
+  } else if (kind === "arrow") {
+    const angle = Math.atan2(ly1 - ly0, lx1 - lx0);
+    const head = Math.max(ARROW_HEAD_MIN, (Number($("thickness").value) || 3) * 3.5);
+    const sp = Math.PI / 7;
+    svg.append(mk("line", { x1: lx0, y1: ly0, x2: lx1, y2: ly1 }));
+    svg.append(mk("polyline", {
+      points: `${lx1 - head * Math.cos(angle - sp)},${ly1 - head * Math.sin(angle - sp)} ${lx1},${ly1} ${lx1 - head * Math.cos(angle + sp)},${ly1 - head * Math.sin(angle + sp)}`,
+    }));
+  }
+}
+
+async function commitShape() {
+  const kind = TOOLS[state.tool].shape;
+  const hit = pageAt(drag.x0, drag.y0);
+  if (!hit) return;
+
+  let [cx0, cy0, cx1, cy1] = [drag.x0, drag.y0, drag.x1, drag.y1];
+  if (drag.shift) [cx0, cy0, cx1, cy1] = constrain(kind, cx0, cy0, cx1, cy1);
+  // Ignore stray clicks.
+  if (Math.hypot(cx1 - cx0, cy1 - cy0) < 4) return;
+
+  const [px0, py0] = toPdfPoint(hit.pageIndex, hit.pageDiv, cx0, cy0);
+  const [px1, py1] = toPdfPoint(hit.pageIndex, hit.pageDiv, cx1, cy1);
+  const thickness = Number($("thickness").value) || 3;
+  const paths = shapePaths(kind, px0, py0, px1, py1, thickness);
+  await addShape(hit.pageIndex, paths, state.colors[AnnotationEditorType.INK], thickness);
+}
+
+// --- eraser ----------------------------------------------------------------
+
+/**
+ * Deletes whole marks rather than pixels: ink is vector, so partial erasure is
+ * not meaningful. Live editors are removed outright; marks already baked into
+ * the PDF get a deletion record that saveDocument acts on.
+ */
+function eraseAt(clientX, clientY) {
+  const hit = pageAt(clientX, clientY);
+  if (!hit) return false;
+
+  const candidates = [];
+  for (const el of hit.pageDiv.querySelectorAll('.annotationEditorLayer [id^="pdfjs_internal_editor_"]')) {
+    candidates.push({ el, kind: "editor" });
+  }
+  for (const el of hit.pageDiv.querySelectorAll(".annotationLayer section[data-annotation-id]")) {
+    if (el.style.display !== "none") candidates.push({ el, kind: "annotation" });
+  }
+
+  // Hit-test by box, and prefer the tightest match so overlapping marks stay
+  // individually erasable. A thin stroke is nearly impossible to hit exactly.
+  let best = null;
+  for (const cand of candidates) {
+    const r = cand.el.getBoundingClientRect();
+    if (clientX < r.left - 2 || clientX > r.right + 2 || clientY < r.top - 2 || clientY > r.bottom + 2) continue;
+    const area = Math.max(r.width * r.height, 1);
+    // Editors sit above annotations, so break ties in their favour.
+    const score = area - (cand.kind === "editor" ? 0.5 : 0);
+    if (!best || score < best.score) best = { ...cand, score };
+  }
+  if (!best) return false;
+
+  if (best.kind === "editor") {
+    const editor = state.uiManager?.getEditor(best.el.id);
+    if (!editor) return false;
+    const layer = editor.parent;
+    const uiManager = state.uiManager;
+    // An editor standing in for an annotation already in the file needs an
+    // explicit deletion record. Without it removeEditor simply drops the
+    // storage entry and the mark reappears on the next save.
+    const fromFile = Boolean(editor.annotationElementId);
+    uiManager.addCommands({
+      cmd: () => {
+        if (fromFile) {
+          uiManager.addToAnnotationStorage(editor);
+          uiManager.addDeletedAnnotationElement(editor);
+        }
+        editor.remove();
+        scheduleSave();
+      },
+      undo: () => {
+        if (fromFile) uiManager.removeDeletedAnnotationElement(editor);
+        layer?.addOrRebuild(editor);
+        scheduleSave();
+      },
+      mustExec: true,
+    });
+    return true;
+  }
+
+  const id = best.el.dataset.annotationId;
+  const storage = state.pdfDocument.annotationStorage;
+  // The key must carry PDF.js's editor prefix or the worker ignores the entry.
+  const key = `${"pdfjs_internal_editor_"}deleted_${id}`;
+  const el = best.el;
+  state.uiManager?.addCommands({
+    cmd: () => {
+      storage.setValue(key, { id, deleted: true, pageIndex: hit.pageIndex, popupRef: "" });
+      el.style.display = "none";
+      scheduleSave();
+    },
+    undo: () => {
+      storage.remove(key);
+      el.style.display = "";
+      scheduleSave();
+    },
+    mustExec: true,
+  });
+  return true;
+}
+
+// --- overlay events --------------------------------------------------------
+
+function wireOverlay() {
+  const overlay = $("shapeOverlay");
+
+  overlay.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    if (TOOLS[state.tool]?.erase) {
+      eraseAt(e.clientX, e.clientY);
+      drag.active = true; // allow dragging across several marks
+      return;
+    }
+    drag.active = true;
+    drag.shift = e.shiftKey;
+    drag.x0 = drag.x1 = e.clientX;
+    drag.y0 = drag.y1 = e.clientY;
+    overlay.setPointerCapture?.(e.pointerId);
+  });
+
+  overlay.addEventListener("pointermove", (e) => {
+    if (!drag.active) return;
+    if (TOOLS[state.tool]?.erase) {
+      eraseAt(e.clientX, e.clientY);
+      return;
+    }
+    drag.x1 = e.clientX;
+    drag.y1 = e.clientY;
+    drag.shift = e.shiftKey;
+    drawPreview();
+  });
+
+  const finish = async (e) => {
+    if (!drag.active) return;
+    drag.active = false;
+    if (TOOLS[state.tool]?.erase) return;
+    drag.x1 = e.clientX;
+    drag.y1 = e.clientY;
+    drag.shift = e.shiftKey;
+    clearPreview();
+    await commitShape();
+  };
+  overlay.addEventListener("pointerup", finish);
+  overlay.addEventListener("pointercancel", () => {
+    drag.active = false;
+    clearPreview();
+  });
+
+  window.addEventListener("resize", () => overlayActive() && positionOverlay());
+  $("viewerContainer").addEventListener("scroll", () => overlayActive() && clearPreview());
 }
 
 // --- find ------------------------------------------------------------------
@@ -589,7 +968,16 @@ async function bootDocument(bytes, hash) {
     state.uiManager = uiManager;
   });
 
-  eventBus.on("annotationeditormodechanged", ({ mode }) => reflectMode(mode));
+  eventBus.on("annotationeditormodechanged", ({ mode }) => {
+    state.mode = mode;
+    // Only follow PDF.js when it moved somewhere our current tool does not
+    // already cover, so shape and eraser tools are not reset by their own
+    // switch into ink mode.
+    if (TOOLS[state.tool].mode !== mode) {
+      state.tool = MODE_TO_TOOL.get(mode) ?? "select";
+    }
+    reflectTool();
+  });
 
   // Editors dispatch this when the user double-clicks an existing annotation.
   eventBus.on("switchannotationeditormode", ({ mode, editId }) => {
@@ -678,8 +1066,9 @@ function wireUi() {
   });
 
   for (const b of document.querySelectorAll(".tool")) {
-    b.addEventListener("click", () => setMode(Number(b.dataset.mode)));
+    b.addEventListener("click", () => setTool(b.dataset.tool));
   }
+  wireOverlay();
 
   $("undo").addEventListener("click", () => state.uiManager?.undo());
   $("redo").addEventListener("click", () => state.uiManager?.redo());
@@ -727,10 +1116,9 @@ function wireUi() {
       return;
     }
     if (typing) return;
-    if (e.key === "Escape") setMode(AnnotationEditorType.NONE);
-    if (e.key === "h" || e.key === "H") setMode(AnnotationEditorType.HIGHLIGHT);
-    if (e.key === "d" || e.key === "D") setMode(AnnotationEditorType.INK);
-    if (e.key === "t" || e.key === "T") setMode(AnnotationEditorType.FREETEXT);
+    const byKey = { escape: "select", h: "highlight", d: "draw", t: "text", r: "rect", o: "ellipse", l: "line", a: "arrow", e: "erase" };
+    const tool = byKey[e.key.toLowerCase()];
+    if (tool) setTool(tool);
     if (e.key === "n" || e.key === "N") state.pdfViewer && state.pdfViewer.currentPageNumber++;
     if (e.key === "p" || e.key === "P") state.pdfViewer && state.pdfViewer.currentPageNumber--;
   });

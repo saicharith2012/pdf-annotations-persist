@@ -42,14 +42,35 @@ URLs** on the extension's card. The extension detects when this is off and says 
 |---|---|
 | Select | `Esc` |
 | Highlight | `H` |
-| Draw | `D` |
+| Draw (freehand) | `D` |
+| Rectangle | `R` |
+| Ellipse | `O` |
+| Line | `L` |
+| Arrow | `A` |
 | Text box | `T` |
+| Eraser | `E` |
 | Find | `Ctrl+F` |
+| Undo / redo | `Ctrl+Z` / `Ctrl+Shift+Z` |
 | Save now | `Ctrl+S` |
 | Next / previous page | `N` / `P` |
 
 Saving is automatic — every change is written about a second after you stop.
 The chip in the toolbar shows where things stand.
+
+### Diagrams
+
+The rectangle, ellipse, line and arrow tools drag out shapes in the current
+colour and thickness. Hold **Shift** while dragging for a perfect square or
+circle, or to snap a line or arrow to 45°.
+
+Shapes are stored as ordinary PDF ink annotations — a rectangle is four straight
+strokes, an arrow is a shaft plus two head strokes — so they behave exactly like
+freehand marks: same colours, same undo, same portability to other readers.
+
+The **eraser** removes a whole mark at a time rather than rubbing out pixels,
+which is what vector strokes allow. Click a mark, or drag across several. It
+works on marks you just made and on marks already saved into the file, and
+`Ctrl+Z` puts them back.
 
 ## Where the annotations live
 

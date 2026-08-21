@@ -273,6 +273,29 @@ button.tool.active { background: var(--active); color: var(--accent); }
 
 #findStatus { min-width: 70px; }
 
+/* --- shape / eraser overlay ---------------------------------------------- */
+
+/* Sits above the pages so shape drags and eraser clicks are handled here
+   rather than by PDF.js's own freehand drawing. */
+#shapeOverlay {
+  position: fixed;
+  z-index: 15;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+#shapeOverlay.erasing {
+  cursor: cell;
+}
+
+#shapePreview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
 /* --- viewer --------------------------------------------------------------- */
 
 #viewerContainer {
