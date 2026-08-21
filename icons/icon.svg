@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#3B5BDB"/>
+  <!-- page -->
+  <path d="M34 24h40l22 22v58a6 6 0 0 1-6 6H34a6 6 0 0 1-6-6V30a6 6 0 0 1 6-6z" fill="#FFFFFF"/>
+  <path d="M74 24l22 22H80a6 6 0 0 1-6-6V24z" fill="#C7D2FE"/>
+  <!-- highlight band -->
+  <rect x="40" y="58" width="48" height="12" rx="3" fill="#FFE066"/>
+  <!-- text lines -->
+  <rect x="40" y="44" width="40" height="5" rx="2.5" fill="#CBD5E1"/>
+  <rect x="40" y="80" width="46" height="5" rx="2.5" fill="#CBD5E1"/>
+  <!-- ink squiggle -->
+  <path d="M38 100c8-10 16 6 24-3s16 5 26-6" fill="none" stroke="#E03131" stroke-width="6" stroke-linecap="round"/>
+</svg>

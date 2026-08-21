@@ -1,0 +1,311 @@
+:root {
+  --bg: #f4f4f6;
+  --chrome: #ffffff;
+  --fg: #1c1c1e;
+  --muted: #6b6b73;
+  --border: #d9d9e0;
+  --hover: #ececf1;
+  --active: #e0e0ff;
+  --accent: #3b5bdb;
+  --danger: #c92a2a;
+  --ok: #2b8a3e;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .12);
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1b1f;
+    --chrome: #26262b;
+    --fg: #e9e9ee;
+    --muted: #9a9aa4;
+    --border: #3a3a42;
+    --hover: #33333a;
+    --active: #37375a;
+    --accent: #8ea3ff;
+    --danger: #ff8787;
+    --ok: #69db7c;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .5);
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* A display rule on any of these would otherwise beat the hidden attribute. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+/* --- toolbar ------------------------------------------------------------- */
+
+#toolbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 8px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow);
+}
+
+.group { display: flex; align-items: center; gap: 2px; }
+.spacer { flex: 1; }
+.sep { width: 1px; height: 20px; margin: 0 4px; background: var(--border); }
+.muted { color: var(--muted); }
+
+button.icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+button.icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* The select-arrow glyph reads better filled. */
+.tool[data-mode="0"] svg { fill: currentColor; }
+
+button.icon:hover:not(:disabled) { background: var(--hover); }
+button.icon:disabled { opacity: .35; cursor: default; }
+button.tool.active { background: var(--active); color: var(--accent); }
+
+#pageNumber {
+  width: 44px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  text-align: center;
+}
+
+#pageNumber::-webkit-inner-spin-button { appearance: none; }
+
+#zoomLevel {
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* --- colour swatches ------------------------------------------------------ */
+
+#swatches { display: flex; gap: 3px; }
+
+.swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .18);
+}
+
+.swatch[aria-checked="true"] { border-color: var(--fg); }
+
+#thicknessWrap { display: flex; align-items: center; gap: 4px; }
+#thickness { width: 72px; }
+
+/* --- save chip ------------------------------------------------------------ */
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover { background: var(--hover); }
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.dot.saved { background: var(--ok); }
+.dot.saving { background: #f59f00; animation: pulse 1s ease-in-out infinite; }
+.dot.error { background: var(--danger); }
+
+@keyframes pulse { 50% { opacity: .3; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dot.saving { animation: none; }
+  .spinner { animation-duration: 3s; }
+}
+
+/* --- menu ----------------------------------------------------------------- */
+
+#menu {
+  position: absolute;
+  top: 38px;
+  right: 8px;
+  min-width: 260px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chrome);
+  box-shadow: var(--shadow);
+}
+
+#menu button {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#menu button:hover { background: var(--hover); }
+#menu button:disabled { opacity: .4; cursor: default; }
+.menu-sep { height: 1px; margin: 4px 0; background: var(--border); }
+
+/* --- notices -------------------------------------------------------------- */
+
+#notices {
+  position: fixed;
+  inset: 40px 0 auto 0;
+  z-index: 25;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: #fff4e6;
+  color: #7a3d00;
+}
+
+.notice.info { background: #e7f5ff; color: #12436b; }
+.notice.error { background: #ffe3e3; color: #7a1212; }
+
+@media (prefers-color-scheme: dark) {
+  .notice { background: #3a2d16; color: #ffd8a8; }
+  .notice.info { background: #16303f; color: #a5d8ff; }
+  .notice.error { background: #3f1d1d; color: #ffc9c9; }
+}
+
+.notice p { margin: 0; flex: 1; }
+
+.notice button {
+  padding: 4px 10px;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.notice button:hover { background: rgba(127, 127, 127, .18); }
+.notice .close { border: 0; font-size: 16px; line-height: 1; padding: 2px 6px; }
+
+/* --- find bar ------------------------------------------------------------- */
+
+#findbar {
+  position: fixed;
+  top: 44px;
+  right: 12px;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--chrome);
+  box-shadow: var(--shadow);
+}
+
+#findInput {
+  width: 200px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+#findStatus { min-width: 70px; }
+
+/* --- viewer --------------------------------------------------------------- */
+
+#viewerContainer {
+  position: absolute;
+  inset: 40px 0 0 0;
+  overflow: auto;
+  outline: none;
+}
+
+/* pdf.js positions pages against this container. */
+#viewer { --scale-factor: 1; }
+
+/* --- loading -------------------------------------------------------------- */
+
+#loading {
+  position: fixed;
+  inset: 40px 0 0 0;
+  z-index: 20;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }

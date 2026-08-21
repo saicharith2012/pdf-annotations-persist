@@ -1,0 +1,52 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Persistent PDF Annotations — Settings</title>
+<link rel="stylesheet" href="options.css">
+
+<main>
+  <h1>Persistent PDF Annotations</h1>
+  <p class="lede">
+    Highlights and doodles are written into the PDF itself, so they survive in this
+    browser and in any other PDF reader.
+  </p>
+
+  <section id="statusSection">
+    <h2>Status</h2>
+    <ul id="status" class="status"></ul>
+  </section>
+
+  <section>
+    <h2>Behaviour</h2>
+    <label class="row">
+      <input type="checkbox" id="enabled">
+      <span>
+        <strong>Open PDFs in this extension's viewer</strong>
+        <small>Turn this off to hand PDFs back to Brave's built-in viewer.</small>
+      </span>
+    </label>
+
+    <div class="row block">
+      <span>
+        <strong>Sites to leave alone</strong>
+        <small>One domain per line. PDFs on these sites open in the built-in viewer.</small>
+      </span>
+      <textarea id="excluded" rows="4" spellcheck="false" placeholder="intranet.example.com"></textarea>
+      <button id="saveExcluded" class="primary">Save site list</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Annotated documents</h2>
+    <p id="usage" class="muted"></p>
+    <table id="docsTable" hidden>
+      <thead>
+        <tr><th>Document</th><th>Size</th><th>Last saved</th><th></th></tr>
+      </thead>
+      <tbody id="docs"></tbody>
+    </table>
+    <p id="noDocs" class="muted">Nothing saved yet.</p>
+    <button id="clearAll" class="danger" hidden>Delete all annotated copies</button>
+  </section>
+</main>
+
+<script type="module" src="options.js"></script>

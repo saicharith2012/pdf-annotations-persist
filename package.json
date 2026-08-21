@@ -1,0 +1,14 @@
+{
+  "name": "pdf-annotations-persist",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Brave/Chrome extension: PDF highlights and doodles persist by being written into the PDF itself.",
+  "scripts": {
+    "build": "node scripts/copy-pdfjs.mjs",
+    "clean": "rm -rf vendor"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.2.108"
+  }
+}
